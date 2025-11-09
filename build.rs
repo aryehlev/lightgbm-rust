@@ -172,8 +172,8 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, lib_pattern)?;
         }
 
-        // Windows - only x86_64 available (no ARM64 support yet)
-        ("windows", "x86_64") | ("windows", "i686") => {
+        // Windows - only x86_64 available
+        ("windows", "x86_64") => {
             // For Windows, extract from wheel as well for consistency
             let wheel_url = format!(
                 "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-win_amd64.whl",
@@ -186,6 +186,10 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             );
 
             download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, "lib_lightgbm.dll")?;
+        }
+
+        ("windows", "i686") => {
+            return Err("Windows 32-bit (i686) is not supported by LightGBM releases. Please use x86_64 Windows or compile LightGBM from source.".into());
         }
 
         ("windows", "aarch64") => {
