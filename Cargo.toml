@@ -1,0 +1,26 @@
+[package]
+name = "lightgbm-rust"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for LightGBM, a gradient boosting framework. Downloads LightGBM binaries at build time for cross-platform compatibility."
+license = "Apache-2.0"
+keywords = ["machine-learning", "gradient-boosting", "lightgbm", "ml"]
+categories = ["science"]
+readme = "README.md"
+rust-version = "1.70"
+
+[build-dependencies]
+bindgen = "0.72.0"
+ureq = "2.0"
+
+[features]
+default = []
+gpu = []
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "advanced_usage"
+path = "examples/advanced_usage.rs"
