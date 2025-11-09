@@ -4,12 +4,47 @@ use std::ffi::CString;
 use std::path::Path;
 use std::ptr;
 
+/// A LightGBM Booster for making predictions.
+///
+/// # Thread Safety
+///
+/// **This type is NOT thread-safe.** The underlying LightGBM C API does not
+/// guarantee thread-safety for concurrent predictions using the same handle.
+///
+/// For multi-threaded use cases, use one of these approaches:
+///
+/// 1. **Create one Booster per thread** (recommended):
+///    ```ignore
+///    let booster = Booster::load("model.txt")?;
+///    thread::spawn(move || {
+///        booster.predict(...);  // Each thread owns its Booster
+///    });
+///    ```
+///
+/// 2. **Wrap in Arc<Mutex<Booster>>** for shared access:
+///    ```ignore
+///    use std::sync::{Arc, Mutex};
+///    let booster = Arc::new(Mutex::new(Booster::load("model.txt")?));
+///    let booster_clone = booster.clone();
+///    thread::spawn(move || {
+///        let booster = booster_clone.lock().unwrap();
+///        booster.predict(...);
+///    });
+///    ```
+///
+/// Note: LightGBM had known thread-safety issues in versions 3.0.0-3.x that
+/// were fixed in later versions, but the C API does not explicitly document
+/// thread-safety guarantees.
 pub struct Booster {
     handle: sys::BoosterHandle,
 }
 
-unsafe impl Send for Booster {}
-unsafe impl Sync for Booster {}
+// NOTE: We do NOT implement Send or Sync for Booster because:
+// 1. LightGBM's C API doesn't document thread-safety guarantees
+// 2. Historical bugs (v3.0.0+) showed concurrent predictions could produce wrong results
+// 3. Users should explicitly choose synchronization strategy (one-per-thread or Mutex)
+//
+// If you need to share a Booster across threads, wrap it in Arc<Mutex<Booster>>.
 
 impl Booster {
     /// Load a model from a file

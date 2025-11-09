@@ -122,6 +122,53 @@ let leaves = booster.predict(&data, 1, 4, predict_type::LEAF_INDEX)?;
 let shap = booster.predict(&data, 1, 4, predict_type::CONTRIB)?;
 ```
 
+### Thread Safety
+
+**Important:** `Booster` is **NOT thread-safe** by default. The underlying LightGBM C API does not guarantee thread-safety for concurrent predictions.
+
+For multi-threaded use cases, choose one of these approaches:
+
+**Option 1: One Booster per thread (recommended)**
+```rust
+use std::thread;
+
+let model_bytes = std::fs::read("model.txt")?;
+
+let handles: Vec<_> = (0..4).map(|_| {
+    let model_bytes = model_bytes.clone();
+    thread::spawn(move || {
+        let booster = Booster::load_from_buffer(&model_bytes).unwrap();
+        booster.predict(&[1.0, 2.0, 3.0], 1, 3, predict_type::NORMAL)
+    })
+}).collect();
+
+for handle in handles {
+    let result = handle.join().unwrap()?;
+    println!("Result: {:?}", result);
+}
+```
+
+**Option 2: Shared access with Arc<Mutex<Booster>>**
+```rust
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+let booster = Arc::new(Mutex::new(Booster::load("model.txt")?));
+
+let handles: Vec<_> = (0..4).map(|_| {
+    let booster = booster.clone();
+    thread::spawn(move || {
+        let booster = booster.lock().unwrap();
+        booster.predict(&[1.0, 2.0, 3.0], 1, 3, predict_type::NORMAL)
+    })
+}).collect();
+
+for handle in handles {
+    let result = handle.join().unwrap()?;
+    println!("Result: {:?}", result);
+}
+```
+
 ## Configuration
 
 ### LightGBM Version
