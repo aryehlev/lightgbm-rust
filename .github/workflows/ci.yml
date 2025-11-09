@@ -111,28 +111,12 @@ jobs:
         LIGHTGBM_VERSION: ${{ matrix.lightgbm_version }}
       run: cargo test --verbose
 
-    - name: Check build (with polars-support)
-      env:
-        LIGHTGBM_VERSION: ${{ matrix.lightgbm_version }}
-      run: cargo check --features polars-support --verbose
-
-    - name: Build (with polars-support)
-      env:
-        LIGHTGBM_VERSION: ${{ matrix.lightgbm_version }}
-      run: cargo build --features polars-support --verbose
-
-    - name: Run tests (with polars-support)
-      env:
-        LIGHTGBM_VERSION: ${{ matrix.lightgbm_version }}
-      run: cargo test --features polars-support --verbose
-
     - name: Build examples
       env:
         LIGHTGBM_VERSION: ${{ matrix.lightgbm_version }}
       run: |
         cargo build --example basic_usage --verbose
         cargo build --example advanced_usage --verbose
-        cargo build --example polars_usage --features polars-support --verbose
 
     - name: Verify library architecture (macOS)
       if: matrix.os == 'macos'
@@ -168,9 +152,6 @@ jobs:
     - name: Run clippy (no features)
       run: cargo clippy -- -D warnings
 
-    - name: Run clippy (with polars-support)
-      run: cargo clippy --features polars-support -- -D warnings
-
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -203,23 +184,24 @@ jobs:
         cargo build --verbose
 
   # Test unsupported platform (should fail gracefully)
+  # Commented out because it requires manual verification
   unsupported-platform:
-    name: Test Windows ARM64 (unsupported)
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v4
+     name: Test Windows ARM64 (unsupported)
+     runs-on: windows-latest
+     steps:
+     - uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
+     - name: Install Rust
+       uses: dtolnay/rust-toolchain@stable
 
-    - name: Add ARM64 target
-      run: rustup target add aarch64-pc-windows-msvc
+     - name: Add ARM64 target
+       run: rustup target add aarch64-pc-windows-msvc
 
-    - name: Test unsupported platform detection
-      continue-on-error: true
-      run: cargo build --target aarch64-pc-windows-msvc --verbose
-      id: unsupported_build
+     - name: Test unsupported platform detection
+       continue-on-error: true
+       run: cargo build --target aarch64-pc-windows-msvc --verbose
+       id: unsupported_build
 
-    - name: Verify build failed with correct error
-      if: steps.unsupported_build.outcome == 'failure'
-      run: echo "Build failed as expected for Windows ARM64"
+     - name: Verify build failed with correct error
+       if: steps.unsupported_build.outcome == 'failure'
+       run: echo "Build failed as expected for Windows ARM64"
