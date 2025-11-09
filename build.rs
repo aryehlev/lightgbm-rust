@@ -54,7 +54,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&c_api_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download c_api.h: HTTP {}", status).into());
     }
 
@@ -72,7 +72,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&export_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download export.h: HTTP {}", status).into());
     }
 
@@ -228,7 +228,7 @@ fn download_and_extract_from_wheel(
 
     let response = ureq::get(wheel_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download wheel: HTTP {}", status).into());
     }
 
@@ -300,7 +300,8 @@ fn main() {
         .blocklist_type(".*_Tp.*")
         .blocklist_type(".*_Pred.*")
         .size_t_is_usize(true)
-        .rustfmt_bindings(true)
+        // Allow dead code since we don't use all FFI functions
+        .raw_line("#![allow(dead_code)]")
         .generate()
         .expect("Unable to generate bindings.");
 
