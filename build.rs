@@ -80,41 +80,46 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
     let mut file = fs::File::create(&export_path)?;
     io::copy(&mut response.into_reader(), &mut file)?;
 
-    // Also download arrow.h which is referenced by c_api.h
+    // Try to download arrow.h which is referenced by c_api.h (added in v4.2.0)
+    // For older versions, this file doesn't exist, so we skip it
     let arrow_url = format!(
         "https://raw.githubusercontent.com/microsoft/LightGBM/v{}/include/LightGBM/arrow.h",
         version
     );
 
-    println!("cargo:warning=Downloading arrow.h from: {}", arrow_url);
+    println!("cargo:warning=Attempting to download arrow.h from: {}", arrow_url);
 
-    let response = ureq::get(&arrow_url).call()?;
-    let status = response.status();
-    if status < 200 || status >= 300 {
-        return Err(format!("Failed to download arrow.h: HTTP {}", status).into());
+    match ureq::get(&arrow_url).call() {
+        Ok(response) if response.status() >= 200 && response.status() < 300 => {
+            let arrow_path = include_dir.join("arrow.h");
+            let mut file = fs::File::create(&arrow_path)?;
+            io::copy(&mut response.into_reader(), &mut file)?;
+            println!("cargo:warning=Successfully downloaded arrow.h");
+
+            // Also try to download arrow.tpp which is referenced by arrow.h
+            let arrow_tpp_url = format!(
+                "https://raw.githubusercontent.com/microsoft/LightGBM/v{}/include/LightGBM/arrow.tpp",
+                version
+            );
+
+            println!("cargo:warning=Attempting to download arrow.tpp from: {}", arrow_tpp_url);
+
+            match ureq::get(&arrow_tpp_url).call() {
+                Ok(resp) if resp.status() >= 200 && resp.status() < 300 => {
+                    let arrow_tpp_path = include_dir.join("arrow.tpp");
+                    let mut file = fs::File::create(&arrow_tpp_path)?;
+                    io::copy(&mut resp.into_reader(), &mut file)?;
+                    println!("cargo:warning=Successfully downloaded arrow.tpp");
+                }
+                _ => {
+                    println!("cargo:warning=arrow.tpp not available for this version (optional)");
+                }
+            }
+        }
+        _ => {
+            println!("cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)");
+        }
     }
-
-    let arrow_path = include_dir.join("arrow.h");
-    let mut file = fs::File::create(&arrow_path)?;
-    io::copy(&mut response.into_reader(), &mut file)?;
-
-    // Also download arrow.tpp which is referenced by arrow.h
-    let arrow_tpp_url = format!(
-        "https://raw.githubusercontent.com/microsoft/LightGBM/v{}/include/LightGBM/arrow.tpp",
-        version
-    );
-
-    println!("cargo:warning=Downloading arrow.tpp from: {}", arrow_tpp_url);
-
-    let response = ureq::get(&arrow_tpp_url).call()?;
-    let status = response.status();
-    if status < 200 || status >= 300 {
-        return Err(format!("Failed to download arrow.tpp: HTTP {}", status).into());
-    }
-
-    let arrow_tpp_path = include_dir.join("arrow.tpp");
-    let mut file = fs::File::create(&arrow_tpp_path)?;
-    io::copy(&mut response.into_reader(), &mut file)?;
 
     Ok(())
 }
