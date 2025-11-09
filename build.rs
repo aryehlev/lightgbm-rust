@@ -132,98 +132,115 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
     let lib_dir = out_dir.join("libs");
     fs::create_dir_all(&lib_dir)?;
 
-    // For macOS, extract from Python wheel to get architecture-specific binaries
-    if os == "darwin" {
-        let wheel_arch = if arch == "aarch64" { "arm64" } else { "x86_64" };
-        let wheel_url = format!(
-            "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-macosx_12_0_{}.whl",
-            version, version, wheel_arch
-        );
+    // For macOS and Linux, extract from Python wheel to get architecture-specific binaries
+    match (os.as_str(), arch.as_str()) {
+        // macOS - both x86_64 and ARM64 available
+        ("darwin", "aarch64") | ("darwin", "x86_64") => {
+            let wheel_arch = if arch == "aarch64" { "arm64" } else { "x86_64" };
+            let macos_version = if arch == "aarch64" { "12_0" } else { "10_15" };
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-macosx_{}_{}.whl",
+                version, version, macos_version, wheel_arch
+            );
 
-        println!(
-            "cargo:warning=Downloading LightGBM v{} macOS {} wheel from: {}",
-            version, wheel_arch, wheel_url
-        );
+            println!(
+                "cargo:warning=Downloading LightGBM v{} macOS {} wheel from: {}",
+                version, wheel_arch, wheel_url
+            );
 
-        // Download the wheel to a temp file
-        let wheel_path = out_dir.join(format!("lightgbm-{}.whl", wheel_arch));
-        let mut dest = fs::File::create(&wheel_path)?;
-
-        let response = ureq::get(&wheel_url).call()?;
-        let status = response.status();
-        if status < 200 || status >= 300 {
-            return Err(format!("Failed to download wheel: HTTP {}", status).into());
+            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, "lib_lightgbm.dylib")?;
         }
 
-        io::copy(&mut response.into_reader(), &mut dest)?;
-        drop(dest); // Close file before reading
+        // Linux - both x86_64 and ARM64 available
+        ("linux", "aarch64") | ("linux", "x86_64") => {
+            let (wheel_platform, lib_pattern) = if arch == "aarch64" {
+                ("manylinux2014_aarch64", "lib_lightgbm.so")
+            } else {
+                ("manylinux_2_28_x86_64", "lib_lightgbm.so")
+            };
 
-        // Extract lib_lightgbm.dylib from the wheel
-        // Wheels are just zip files
-        let wheel_file = fs::File::open(&wheel_path)?;
-        let mut archive = zip::ZipArchive::new(wheel_file)?;
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-{}.whl",
+                version, version, wheel_platform
+            );
 
-        // Find and extract the dylib
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i)?;
-            if file.name().ends_with("lib_lightgbm.dylib") {
-                let lib_path = lib_dir.join("lib_lightgbm.dylib");
-                let mut outfile = fs::File::create(&lib_path)?;
-                io::copy(&mut file, &mut outfile)?;
+            println!(
+                "cargo:warning=Downloading LightGBM v{} Linux {} wheel from: {}",
+                version, arch, wheel_url
+            );
 
-                println!(
-                    "cargo:warning=Extracted LightGBM library to: {}",
-                    lib_path.display()
-                );
-                return Ok(());
-            }
+            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, lib_pattern)?;
         }
 
-        return Err("lib_lightgbm.dylib not found in wheel".into());
+        // Windows - only x86_64 available (no ARM64 support yet)
+        ("windows", "x86_64") | ("windows", "i686") => {
+            // For Windows, extract from wheel as well for consistency
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-win_amd64.whl",
+                version, version
+            );
+
+            println!(
+                "cargo:warning=Downloading LightGBM v{} Windows x86_64 wheel from: {}",
+                version, wheel_url
+            );
+
+            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, "lib_lightgbm.dll")?;
+        }
+
+        ("windows", "aarch64") => {
+            return Err("Windows ARM64 is not currently supported by LightGBM releases. Please use x86_64 Windows or compile LightGBM from source.".into());
+        }
+
+        _ => {
+            return Err(format!("Unsupported platform/architecture combination: {} / {}", os, arch).into());
+        }
     }
 
-    // For Linux and Windows, use standalone binaries
-    let (lib_filename, download_url) = match os.as_str() {
-        "linux" => (
-            "lib_lightgbm.so".to_string(),
-            format!(
-                "https://github.com/microsoft/LightGBM/releases/download/v{}/lib_lightgbm.so",
-                version
-            ),
-        ),
-        "windows" => (
-            "lib_lightgbm.dll".to_string(),
-            format!(
-                "https://github.com/microsoft/LightGBM/releases/download/v{}/lib_lightgbm.dll",
-                version
-            ),
-        ),
-        _ => return Err(format!("Unsupported platform: {}", os).into()),
-    };
+    Ok(())
+}
 
-    println!(
-        "cargo:warning=Downloading LightGBM v{} library from: {}",
-        version, download_url
-    );
+fn download_and_extract_from_wheel(
+    wheel_url: &str,
+    out_dir: &Path,
+    lib_dir: &Path,
+    lib_filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Download the wheel to a temp file
+    let wheel_path = out_dir.join("lightgbm.whl");
+    let mut dest = fs::File::create(&wheel_path)?;
 
-    // Download the library directly into the `libs` directory with its correct name
-    let lib_path = lib_dir.join(&lib_filename);
-    let mut dest = fs::File::create(&lib_path)?;
-
-    let response = ureq::get(&download_url).call()?;
+    let response = ureq::get(wheel_url).call()?;
     let status = response.status();
     if status < 200 || status >= 300 {
-        return Err(format!("Failed to download library: HTTP {}", status).into());
+        return Err(format!("Failed to download wheel: HTTP {}", status).into());
     }
 
     io::copy(&mut response.into_reader(), &mut dest)?;
+    drop(dest); // Close file before reading
 
-    println!(
-        "cargo:warning=Downloaded LightGBM library to: {}",
-        lib_path.display()
-    );
+    // Extract the library from the wheel
+    // Wheels are just zip files
+    let wheel_file = fs::File::open(&wheel_path)?;
+    let mut archive = zip::ZipArchive::new(wheel_file)?;
 
-    Ok(())
+    // Find and extract the library
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        if file.name().ends_with(lib_filename) {
+            let lib_path = lib_dir.join(lib_filename);
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+
+            println!(
+                "cargo:warning=Extracted LightGBM library to: {}",
+                lib_path.display()
+            );
+            return Ok(());
+        }
+    }
+
+    Err(format!("{} not found in wheel", lib_filename).into())
 }
 
 fn main() {
