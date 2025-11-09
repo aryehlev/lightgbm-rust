@@ -49,7 +49,14 @@ pub struct Booster {
 impl Booster {
     /// Load a model from a file
     pub fn load<P: AsRef<Path>>(path: P) -> LightGBMResult<Self> {
-        let path_c_str = CString::new(path.as_ref().to_str().unwrap()).unwrap();
+        let path_str = path.as_ref().to_str()
+            .ok_or_else(|| LightGBMError {
+                description: "Path contains invalid UTF-8 characters".to_string(),
+            })?;
+        let path_c_str = CString::new(path_str)
+            .map_err(|e| LightGBMError {
+                description: format!("Path contains NUL byte: {}", e),
+            })?;
         let mut handle: sys::BoosterHandle = ptr::null_mut();
         let mut num_iterations = 0i32;
 
@@ -78,7 +85,10 @@ impl Booster {
     /// let booster = Booster::load_from_string(&model_string).unwrap();
     /// ```
     pub fn load_from_string(model_str: &str) -> LightGBMResult<Self> {
-        let model_c_str = CString::new(model_str).unwrap();
+        let model_c_str = CString::new(model_str)
+            .map_err(|e| LightGBMError {
+                description: format!("Model string contains NUL byte: {}", e),
+            })?;
         let mut handle: sys::BoosterHandle = ptr::null_mut();
         let mut num_iterations = 0i32;
 
@@ -150,6 +160,24 @@ impl Booster {
         num_cols: i32,
         predict_type: i32,
     ) -> LightGBMResult<Vec<f64>> {
+        // Validate input size to prevent undefined behavior
+        let expected_len = (num_rows as usize).checked_mul(num_cols as usize)
+            .ok_or_else(|| LightGBMError {
+                description: format!(
+                    "Integer overflow when computing expected data size: num_rows ({}) * num_cols ({})",
+                    num_rows, num_cols
+                ),
+            })?;
+
+        if expected_len != data.len() {
+            return Err(LightGBMError {
+                description: format!(
+                    "Input data size mismatch: expected {} elements ({}×{}), got {}",
+                    expected_len, num_rows, num_cols, data.len()
+                ),
+            });
+        }
+
         let mut out_len = 0i64;
 
         // First call to get the output length
@@ -202,6 +230,24 @@ impl Booster {
         num_cols: i32,
         predict_type: i32,
     ) -> LightGBMResult<Vec<f64>> {
+        // Validate input size to prevent undefined behavior
+        let expected_len = (num_rows as usize).checked_mul(num_cols as usize)
+            .ok_or_else(|| LightGBMError {
+                description: format!(
+                    "Integer overflow when computing expected data size: num_rows ({}) * num_cols ({})",
+                    num_rows, num_cols
+                ),
+            })?;
+
+        if expected_len != data.len() {
+            return Err(LightGBMError {
+                description: format!(
+                    "Input data size mismatch: expected {} elements ({}×{}), got {}",
+                    expected_len, num_rows, num_cols, data.len()
+                ),
+            });
+        }
+
         let mut out_len = 0i64;
 
         // First call to get the output length
