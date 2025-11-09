@@ -300,8 +300,6 @@ fn main() {
         .blocklist_type(".*_Tp.*")
         .blocklist_type(".*_Pred.*")
         .size_t_is_usize(true)
-        // Allow dead code since we don't use all FFI functions
-        .raw_line("#![allow(dead_code)]")
         .generate()
         .expect("Unable to generate bindings.");
 
