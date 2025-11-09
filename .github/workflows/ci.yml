@@ -31,7 +31,7 @@ jobs:
           # macOS x86_64 (Intel)
           - os: macos
             arch: x86_64
-            runner: macos-13
+            runner: macos-15-large
             lightgbm_version: "4.6.0"
 
           # Linux x86_64
@@ -44,10 +44,9 @@ jobs:
             runner: ubuntu-latest
             lightgbm_version: "4.5.0"
 
-          # Linux ARM64
           - os: linux
             arch: arm64
-            runner: ubuntu-24.04-arm64
+            runner: ubuntu-latest
             lightgbm_version: "4.6.0"
 
           # Windows x86_64
@@ -91,6 +90,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libclang-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos'
+      run: |
+        brew install libomp
 
     - name: Check build (no features)
       env:

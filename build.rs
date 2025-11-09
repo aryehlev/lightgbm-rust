@@ -1,9 +1,9 @@
 extern crate bindgen;
 
 use std::env;
-use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 
 fn get_lightgbm_version() -> String {
     env::var("LIGHTGBM_VERSION").unwrap_or_else(|_| "4.6.0".to_string())
@@ -87,7 +87,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
         version
     );
 
-    println!("cargo:warning=Attempting to download arrow.h from: {}", arrow_url);
+    println!(
+        "cargo:warning=Attempting to download arrow.h from: {}",
+        arrow_url
+    );
 
     match ureq::get(&arrow_url).call() {
         Ok(response) if response.status() >= 200 && response.status() < 300 => {
@@ -102,7 +105,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
                 version
             );
 
-            println!("cargo:warning=Attempting to download arrow.tpp from: {}", arrow_tpp_url);
+            println!(
+                "cargo:warning=Attempting to download arrow.tpp from: {}",
+                arrow_tpp_url
+            );
 
             match ureq::get(&arrow_tpp_url).call() {
                 Ok(resp) if resp.status() >= 200 && resp.status() < 300 => {
@@ -117,7 +123,9 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             }
         }
         _ => {
-            println!("cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)");
+            println!(
+                "cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)"
+            );
         }
     }
 
@@ -197,7 +205,11 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
         }
 
         _ => {
-            return Err(format!("Unsupported platform/architecture combination: {} / {}", os, arch).into());
+            return Err(format!(
+                "Unsupported platform/architecture combination: {} / {}",
+                os, arch
+            )
+            .into());
         }
     }
 
@@ -267,7 +279,7 @@ fn main() {
         .header("wrapper.h")
         .clang_arg(format!("-I{}", lgbm_include_root.display()))
         .clang_arg("-xc++")
-        .clang_arg("-std=c++11")
+        .clang_arg("-std=c++14")
         // Only generate bindings for functions starting with LGBM_
         .allowlist_function("LGBM_.*")
         // Allowlist the main types we need
@@ -317,8 +329,7 @@ fn main() {
         .join(env::var("PROFILE").unwrap());
 
     let lib_dest_path = target_dir.join(lib_filename);
-    fs::copy(&lib_source_path, &lib_dest_path)
-        .expect("Failed to copy library to target directory");
+    fs::copy(&lib_source_path, &lib_dest_path).expect("Failed to copy library to target directory");
 
     // Set the library search path for the build-time linker
     let lib_search_path = out_dir.join("libs");
@@ -333,19 +344,31 @@ fn main() {
             // For macOS, add multiple rpath entries for IDE compatibility
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
             // Add the target directory to rpath as well
             if let Some(target_root) = out_dir.ancestors().find(|p| p.ends_with("target")) {
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/debug", target_root.display());
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/release", target_root.display());
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/debug",
+                    target_root.display()
+                );
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/release",
+                    target_root.display()
+                );
             }
-        },
+        }
         "linux" => {
             // For Linux, use $ORIGIN
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
-        },
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
+        }
         _ => {} // No rpath needed for Windows
     }
 
