@@ -1,6 +1,6 @@
 [package]
 name = "lightgbm-rust"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Rust bindings for LightGBM, a gradient boosting framework. Downloads LightGBM binaries at build time for cross-platform compatibility."
 license = "Apache-2.0"
