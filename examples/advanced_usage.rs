@@ -34,8 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Leaf indices: {:?}", leaf_indices);
 
     println!("\n--- Feature Contribution (SHAP) ---");
-    let contributions =
-        booster.predict(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
+    let contributions = booster.predict(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
     println!("Feature contributions: {:?}", contributions);
 
     Ok(())
