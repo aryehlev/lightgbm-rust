@@ -345,7 +345,7 @@ fn main() {
         .header("wrapper.h")
         .clang_arg(format!("-I{}", lgbm_include_root.display()))
         .clang_arg("-xc++")
-        .clang_arg("-std=c++14")
+        .clang_arg("-std=c++17")
         // Only generate bindings for functions starting with LGBM_
         .allowlist_function("LGBM_.*")
         // Allowlist the main types we need
