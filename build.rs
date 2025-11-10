@@ -182,7 +182,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
         // Windows - only x86_64 available
         ("windows", "x86_64") => {
-            // For Windows, extract from wheel as well for consistency
+            // For Windows, extract from wheel - need both DLL and import library
             let wheel_url = format!(
                 "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-win_amd64.whl",
                 version, version
@@ -193,7 +193,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
                 version, wheel_url
             );
 
-            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, "lib_lightgbm.dll")?;
+            download_and_extract_windows_libs(&wheel_url, out_dir, &lib_dir)?;
         }
 
         ("windows", "i686") => {
@@ -257,6 +257,72 @@ fn download_and_extract_from_wheel(
     }
 
     Err(format!("{} not found in wheel", lib_filename).into())
+}
+
+fn download_and_extract_windows_libs(
+    wheel_url: &str,
+    out_dir: &Path,
+    lib_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Download the wheel to a temp file
+    let wheel_path = out_dir.join("lightgbm.whl");
+    let mut dest = fs::File::create(&wheel_path)?;
+
+    let response = ureq::get(wheel_url).call()?;
+    let status = response.status();
+    if !(200..300).contains(&status) {
+        return Err(format!("Failed to download wheel: HTTP {}", status).into());
+    }
+
+    io::copy(&mut response.into_reader(), &mut dest)?;
+    drop(dest); // Close file before reading
+
+    // Extract both the DLL and the import library from the wheel
+    // Wheels are just zip files
+    let wheel_file = fs::File::open(&wheel_path)?;
+    let mut archive = zip::ZipArchive::new(wheel_file)?;
+
+    let mut dll_found = false;
+    let mut lib_found = false;
+
+    // Find and extract both lib_lightgbm.dll and lib_lightgbm.lib
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let filename = file.name();
+
+        if filename.ends_with("lib_lightgbm.dll") {
+            let lib_path = lib_dir.join("lib_lightgbm.dll");
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+            println!(
+                "cargo:warning=Extracted LightGBM DLL to: {}",
+                lib_path.display()
+            );
+            dll_found = true;
+        } else if filename.ends_with("lib_lightgbm.lib") {
+            let lib_path = lib_dir.join("lib_lightgbm.lib");
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+            println!(
+                "cargo:warning=Extracted LightGBM import library to: {}",
+                lib_path.display()
+            );
+            lib_found = true;
+        }
+
+        if dll_found && lib_found {
+            return Ok(());
+        }
+    }
+
+    if !dll_found {
+        return Err("lib_lightgbm.dll not found in wheel".into());
+    }
+    if !lib_found {
+        return Err("lib_lightgbm.lib not found in wheel".into());
+    }
+
+    Ok(())
 }
 
 fn main() {
@@ -330,6 +396,15 @@ fn main() {
     let lib_dest_path = target_dir.join(lib_filename);
     fs::copy(&lib_source_path, &lib_dest_path).expect("Failed to copy library to target directory");
 
+    // On Windows, also copy the import library (.lib) to the libs directory for linking
+    if os == "windows" {
+        let import_lib_source = out_dir.join("libs").join("lib_lightgbm.lib");
+        if import_lib_source.exists() {
+            // No need to copy the .lib to target dir, it's only used during linking
+            println!("cargo:warning=Found import library at: {}", import_lib_source.display());
+        }
+    }
+
     // Set the library search path for the build-time linker
     let lib_search_path = out_dir.join("libs");
     println!(
@@ -368,8 +443,13 @@ fn main() {
                 lib_search_path.display()
             );
         }
-        _ => {} // No rpath needed for Windows
+        "windows" => {
+            // On Windows, we need to tell the linker where to find the DLL at runtime
+            // Copy the DLL to the output directory (already done above)
+            println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
+        }
+        _ => {
+            println!("cargo:rustc-link-lib=dylib=_lightgbm");
+        }
     }
-
-    println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
 }
