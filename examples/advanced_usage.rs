@@ -29,8 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Raw scores: {:?}", raw_scores);
 
     println!("\n--- Leaf Index Prediction ---");
-    let leaf_indices =
-        booster.predict(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
+    let leaf_indices = booster.predict(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
     println!("Leaf indices: {:?}", leaf_indices);
 
     println!("\n--- Feature Contribution (SHAP) ---");

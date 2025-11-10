@@ -28,12 +28,6 @@ jobs:
             runner: macos-14
             lightgbm_version: "4.5.0"
 
-          # macOS x86_64 (Intel)
-          - os: macos
-            arch: x86_64
-            runner: macos-15-large
-            lightgbm_version: "4.6.0"
-
           # Linux x86_64
           - os: linux
             arch: x86_64
