@@ -18,83 +18,6 @@ permissions:
   contents: write
 
 jobs:
-  # Create release with version bump
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Configure Git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-
-    - name: Bump version
-      id: version
-      run: |
-        # Get current version from Cargo.toml
-        CURRENT_VERSION=$(grep "^version" Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-        echo "Current version: $CURRENT_VERSION"
-
-        # Split version into major.minor.patch
-        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-        # Bump version based on input
-        case "${{ github.event.inputs.release_type }}" in
-          major)
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-            ;;
-          minor)
-            MINOR=$((MINOR + 1))
-            PATCH=0
-            ;;
-          patch)
-            PATCH=$((PATCH + 1))
-            ;;
-        esac
-
-        NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-        echo "New version: $NEW_VERSION"
-
-        # Update Cargo.toml
-        sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
-
-        # Output for later steps
-        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
-
-    - name: Commit version bump
-      run: |
-        git add Cargo.toml
-        git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
-        git push origin ${{ github.ref_name }}
-
-    - name: Create tag
-      run: |
-        git tag ${{ steps.version.outputs.tag }}
-        git push origin ${{ steps.version.outputs.tag }}
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.version.outputs.tag }}
-        name: Release ${{ steps.version.outputs.version }}
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # Comprehensive pre-release testing across all platforms
   pre-release-test:
     name: Pre-release test ${{ matrix.os }} (${{ matrix.arch }})
@@ -172,6 +95,83 @@ jobs:
         path: |
           lightgbm-rust-${{ matrix.os }}-${{ matrix.arch }}.*
 
+
+  # Create release with version bump
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: version
+        run: |
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep "^version" Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Split version into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          # Bump version based on input
+          case "${{ github.event.inputs.release_type }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          
+          # Output for later steps
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          git add Cargo.toml
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git push origin ${{ github.ref_name }}
+
+      - name: Create tag
+        run: |
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   # Upload artifacts to the release
   upload-release-artifacts:
     name: Upload Release Artifacts
