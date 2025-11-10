@@ -401,7 +401,10 @@ fn main() {
         let import_lib_source = out_dir.join("libs").join("lib_lightgbm.lib");
         if import_lib_source.exists() {
             // No need to copy the .lib to target dir, it's only used during linking
-            println!("cargo:warning=Found import library at: {}", import_lib_source.display());
+            println!(
+                "cargo:warning=Found import library at: {}",
+                import_lib_source.display()
+            );
         }
     }
 
