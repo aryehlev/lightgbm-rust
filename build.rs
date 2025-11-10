@@ -433,6 +433,7 @@ fn main() {
                     target_root.display()
                 );
             }
+            println!("cargo:rustc-link-lib=dylib=_lightgbm");
         }
         "linux" => {
             // For Linux, use $ORIGIN
@@ -442,14 +443,13 @@ fn main() {
                 "cargo:rustc-link-arg=-Wl,-rpath,{}",
                 lib_search_path.display()
             );
+            println!("cargo:rustc-link-lib=dylib=_lightgbm");
         }
         "windows" => {
             // On Windows, we need to tell the linker where to find the DLL at runtime
             // Copy the DLL to the output directory (already done above)
             println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
         }
-        _ => {
-            println!("cargo:rustc-link-lib=dylib=_lightgbm");
-        }
+        _ => {}
     }
 }
