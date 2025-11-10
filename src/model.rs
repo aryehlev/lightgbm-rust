@@ -4,6 +4,33 @@ use std::ffi::CString;
 use std::path::Path;
 use std::ptr;
 
+/// Trait for float types that can be used as input to LightGBM predictions.
+///
+/// This trait is sealed to prevent external implementations, as only f32 and f64
+/// are valid input types for the LightGBM C API.
+pub trait FloatInput: private::Sealed {
+    /// Returns the C API data type constant for this float type
+    fn dtype() -> i32;
+}
+
+mod private {
+    pub trait Sealed {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+}
+
+impl FloatInput for f32 {
+    fn dtype() -> i32 {
+        sys::C_API_DTYPE_FLOAT32 as i32
+    }
+}
+
+impl FloatInput for f64 {
+    fn dtype() -> i32 {
+        sys::C_API_DTYPE_FLOAT64 as i32
+    }
+}
+
 /// A LightGBM Booster for making predictions.
 ///
 /// # Thread Safety
@@ -142,16 +169,27 @@ impl Booster {
     /// Predict for a dense matrix
     ///
     /// # Arguments
-    /// * `data` - Input data in row-major format (flattened 2D array)
+    /// * `data` - Input data in row-major format (flattened 2D array), can be &[f32] or &[f64]
     /// * `num_rows` - Number of rows (samples)
     /// * `num_cols` - Number of columns (features)
     /// * `predict_type` - Prediction type (0 for normal, 1 for raw score, 2 for leaf index)
     ///
     /// # Returns
     /// Vector of predictions
-    pub fn predict(
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Works with f64
+    /// let data_f64: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0];
+    /// let predictions = booster.predict(&data_f64, 2, 2, 0)?;
+    ///
+    /// // Works with f32
+    /// let data_f32: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+    /// let predictions = booster.predict(&data_f32, 2, 2, 0)?;
+    /// ```
+    pub fn predict<T: FloatInput>(
         &self,
-        data: &[f64],
+        data: &[T],
         num_rows: i32,
         num_cols: i32,
         predict_type: i32,
@@ -184,7 +222,7 @@ impl Booster {
             sys::LGBM_BoosterPredictForMat(
                 self.handle,
                 data.as_ptr() as *const std::os::raw::c_void,
-                sys::C_API_DTYPE_FLOAT64 as i32,
+                T::dtype(),
                 num_rows,
                 num_cols,
                 1, // is_row_major
@@ -205,80 +243,7 @@ impl Booster {
             sys::LGBM_BoosterPredictForMat(
                 self.handle,
                 data.as_ptr() as *const std::os::raw::c_void,
-                sys::C_API_DTYPE_FLOAT64 as i32,
-                num_rows,
-                num_cols,
-                1, // is_row_major
-                predict_type,
-                0,  // start_iteration
-                -1, // num_iteration
-                ptr::null(),
-                &mut out_len,
-                out_result.as_mut_ptr(),
-            )
-        })?;
-
-        Ok(out_result)
-    }
-
-    /// Predict for f32 data
-    pub fn predict_f32(
-        &self,
-        data: &[f32],
-        num_rows: i32,
-        num_cols: i32,
-        predict_type: i32,
-    ) -> LightGBMResult<Vec<f64>> {
-        // Validate input size to prevent undefined behavior
-        let expected_len = (num_rows as usize).checked_mul(num_cols as usize)
-            .ok_or_else(|| LightGBMError {
-                description: format!(
-                    "Integer overflow when computing expected data size: num_rows ({}) * num_cols ({})",
-                    num_rows, num_cols
-                ),
-            })?;
-
-        if expected_len != data.len() {
-            return Err(LightGBMError {
-                description: format!(
-                    "Input data size mismatch: expected {} elements ({}×{}), got {}",
-                    expected_len,
-                    num_rows,
-                    num_cols,
-                    data.len()
-                ),
-            });
-        }
-
-        let mut out_len = 0i64;
-
-        // First call to get the output length
-        LightGBMError::check_return_value(unsafe {
-            sys::LGBM_BoosterPredictForMat(
-                self.handle,
-                data.as_ptr() as *const std::os::raw::c_void,
-                sys::C_API_DTYPE_FLOAT32 as i32,
-                num_rows,
-                num_cols,
-                1, // is_row_major
-                predict_type,
-                0,  // start_iteration (0 means from the first)
-                -1, // num_iteration (-1 means use all)
-                ptr::null(),
-                &mut out_len,
-                ptr::null_mut(),
-            )
-        })?;
-
-        // Allocate output buffer
-        let mut out_result = vec![0.0f64; out_len as usize];
-
-        // Second call to get the actual predictions
-        LightGBMError::check_return_value(unsafe {
-            sys::LGBM_BoosterPredictForMat(
-                self.handle,
-                data.as_ptr() as *const std::os::raw::c_void,
-                sys::C_API_DTYPE_FLOAT32 as i32,
+                T::dtype(),
                 num_rows,
                 num_cols,
                 1, // is_row_major

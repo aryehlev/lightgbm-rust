@@ -96,9 +96,9 @@ use lightgbm_rust::{Booster, predict_type};
 
 let booster = Booster::load("model.txt")?;
 
-// Use f32 instead of f64 for large datasets
+// Use f32 instead of f64 for large datasets (predict accepts both)
 let data_f32: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
-let predictions = booster.predict_f32(&data_f32, 1, 4, predict_type::NORMAL)?;
+let predictions = booster.predict(&data_f32, 1, 4, predict_type::NORMAL)?;
 ```
 
 ### Different Prediction Types

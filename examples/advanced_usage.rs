@@ -21,21 +21,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let num_cols = 5;
 
     println!("\n--- Normal Prediction ---");
-    let predictions = booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::NORMAL)?;
+    let predictions = booster.predict(&data_f32, num_rows, num_cols, predict_type::NORMAL)?;
     println!("Normal predictions: {:?}", predictions);
 
     println!("\n--- Raw Score Prediction ---");
-    let raw_scores = booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::RAW_SCORE)?;
+    let raw_scores = booster.predict(&data_f32, num_rows, num_cols, predict_type::RAW_SCORE)?;
     println!("Raw scores: {:?}", raw_scores);
 
     println!("\n--- Leaf Index Prediction ---");
     let leaf_indices =
-        booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
+        booster.predict(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
     println!("Leaf indices: {:?}", leaf_indices);
 
     println!("\n--- Feature Contribution (SHAP) ---");
     let contributions =
-        booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
+        booster.predict(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
     println!("Feature contributions: {:?}", contributions);
 
     Ok(())
