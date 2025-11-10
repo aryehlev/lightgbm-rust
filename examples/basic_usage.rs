@@ -1,4 +1,4 @@
-use lightgbm_rust::{Booster, predict_type};
+use lightgbm_rust::{predict_type, Booster};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load a trained LightGBM model
@@ -29,15 +29,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example: Predict for multiple samples (batch prediction)
     let batch_data = vec![
-        1.0, 2.0, 3.0, 4.0,  // Sample 1
-        2.0, 3.0, 4.0, 5.0,  // Sample 2
-        3.0, 4.0, 5.0, 6.0,  // Sample 3
+        1.0, 2.0, 3.0, 4.0, // Sample 1
+        2.0, 3.0, 4.0, 5.0, // Sample 2
+        3.0, 4.0, 5.0, 6.0, // Sample 3
     ];
     let num_rows = 3;
     let num_cols = 4;
 
     println!("\nMaking batch prediction...");
-    let batch_predictions = booster.predict(&batch_data, num_rows, num_cols, predict_type::NORMAL)?;
+    let batch_predictions =
+        booster.predict(&batch_data, num_rows, num_cols, predict_type::NORMAL)?;
 
     println!("Batch predictions: {:?}", batch_predictions);
 

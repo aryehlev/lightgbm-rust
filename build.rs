@@ -1,9 +1,9 @@
 extern crate bindgen;
 
 use std::env;
-use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 
 fn get_lightgbm_version() -> String {
     env::var("LIGHTGBM_VERSION").unwrap_or_else(|_| "4.6.0".to_string())
@@ -54,7 +54,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&c_api_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download c_api.h: HTTP {}", status).into());
     }
 
@@ -72,7 +72,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&export_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download export.h: HTTP {}", status).into());
     }
 
@@ -87,7 +87,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
         version
     );
 
-    println!("cargo:warning=Attempting to download arrow.h from: {}", arrow_url);
+    println!(
+        "cargo:warning=Attempting to download arrow.h from: {}",
+        arrow_url
+    );
 
     match ureq::get(&arrow_url).call() {
         Ok(response) if response.status() >= 200 && response.status() < 300 => {
@@ -102,7 +105,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
                 version
             );
 
-            println!("cargo:warning=Attempting to download arrow.tpp from: {}", arrow_tpp_url);
+            println!(
+                "cargo:warning=Attempting to download arrow.tpp from: {}",
+                arrow_tpp_url
+            );
 
             match ureq::get(&arrow_tpp_url).call() {
                 Ok(resp) if resp.status() >= 200 && resp.status() < 300 => {
@@ -117,7 +123,9 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             }
         }
         _ => {
-            println!("cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)");
+            println!(
+                "cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)"
+            );
         }
     }
 
@@ -125,60 +133,194 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 }
 
 fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let (os, _arch) = get_platform_info();
+    let (os, arch) = get_platform_info();
     let version = get_lightgbm_version();
-
-    // LightGBM release binaries (platform-specific)
-    let (lib_filename, download_url) = match os.as_str() {
-        "linux" => (
-            "lib_lightgbm.so".to_string(),
-            format!(
-                "https://github.com/microsoft/LightGBM/releases/download/v{}/lib_lightgbm.so",
-                version
-            ),
-        ),
-        "darwin" => (
-            "lib_lightgbm.dylib".to_string(),
-            format!(
-                "https://github.com/microsoft/LightGBM/releases/download/v{}/lib_lightgbm.dylib",
-                version
-            ),
-        ),
-        "windows" => (
-            "lib_lightgbm.dll".to_string(),
-            format!(
-                "https://github.com/microsoft/LightGBM/releases/download/v{}/lib_lightgbm.dll",
-                version
-            ),
-        ),
-        _ => return Err(format!("Unsupported platform: {}", os).into()),
-    };
-
-    println!(
-        "cargo:warning=Downloading LightGBM v{} library from: {}",
-        version, download_url
-    );
 
     // Create the library directory
     let lib_dir = out_dir.join("libs");
     fs::create_dir_all(&lib_dir)?;
 
-    // Download the library directly into the `libs` directory with its correct name
-    let lib_path = lib_dir.join(&lib_filename);
-    let mut dest = fs::File::create(&lib_path)?;
+    // For macOS and Linux, extract from Python wheel to get architecture-specific binaries
+    match (os.as_str(), arch.as_str()) {
+        // macOS - both x86_64 and ARM64 available
+        ("darwin", "aarch64") | ("darwin", "x86_64") => {
+            let wheel_arch = if arch == "aarch64" { "arm64" } else { "x86_64" };
+            let macos_version = if arch == "aarch64" { "12_0" } else { "10_15" };
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-macosx_{}_{}.whl",
+                version, version, macos_version, wheel_arch
+            );
 
-    let response = ureq::get(&download_url).call()?;
+            println!(
+                "cargo:warning=Downloading LightGBM v{} macOS {} wheel from: {}",
+                version, wheel_arch, wheel_url
+            );
+
+            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, "lib_lightgbm.dylib")?;
+        }
+
+        // Linux - both x86_64 and ARM64 available
+        ("linux", "aarch64") | ("linux", "x86_64") => {
+            let (wheel_platform, lib_pattern) = if arch == "aarch64" {
+                ("manylinux2014_aarch64", "lib_lightgbm.so")
+            } else {
+                ("manylinux_2_28_x86_64", "lib_lightgbm.so")
+            };
+
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-{}.whl",
+                version, version, wheel_platform
+            );
+
+            println!(
+                "cargo:warning=Downloading LightGBM v{} Linux {} wheel from: {}",
+                version, arch, wheel_url
+            );
+
+            download_and_extract_from_wheel(&wheel_url, out_dir, &lib_dir, lib_pattern)?;
+        }
+
+        // Windows - only x86_64 available
+        ("windows", "x86_64") => {
+            // For Windows, extract from wheel - need both DLL and import library
+            let wheel_url = format!(
+                "https://github.com/microsoft/LightGBM/releases/download/v{}/lightgbm-{}-py3-none-win_amd64.whl",
+                version, version
+            );
+
+            println!(
+                "cargo:warning=Downloading LightGBM v{} Windows x86_64 wheel from: {}",
+                version, wheel_url
+            );
+
+            download_and_extract_windows_libs(&wheel_url, out_dir, &lib_dir)?;
+        }
+
+        ("windows", "i686") => {
+            return Err("Windows 32-bit (i686) is not supported by LightGBM releases. Please use x86_64 Windows or compile LightGBM from source.".into());
+        }
+
+        ("windows", "aarch64") => {
+            return Err("Windows ARM64 is not currently supported by LightGBM releases. Please use x86_64 Windows or compile LightGBM from source.".into());
+        }
+
+        _ => {
+            return Err(format!(
+                "Unsupported platform/architecture combination: {} / {}",
+                os, arch
+            )
+            .into());
+        }
+    }
+
+    Ok(())
+}
+
+fn download_and_extract_from_wheel(
+    wheel_url: &str,
+    out_dir: &Path,
+    lib_dir: &Path,
+    lib_filename: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Download the wheel to a temp file
+    let wheel_path = out_dir.join("lightgbm.whl");
+    let mut dest = fs::File::create(&wheel_path)?;
+
+    let response = ureq::get(wheel_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
-        return Err(format!("Failed to download library: HTTP {}", status).into());
+    if !(200..300).contains(&status) {
+        return Err(format!("Failed to download wheel: HTTP {}", status).into());
     }
 
     io::copy(&mut response.into_reader(), &mut dest)?;
+    drop(dest); // Close file before reading
 
-    println!(
-        "cargo:warning=Downloaded LightGBM library to: {}",
-        lib_path.display()
-    );
+    // Extract the library from the wheel
+    // Wheels are just zip files
+    let wheel_file = fs::File::open(&wheel_path)?;
+    let mut archive = zip::ZipArchive::new(wheel_file)?;
+
+    // Find and extract the library
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        if file.name().ends_with(lib_filename) {
+            let lib_path = lib_dir.join(lib_filename);
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+
+            println!(
+                "cargo:warning=Extracted LightGBM library to: {}",
+                lib_path.display()
+            );
+            return Ok(());
+        }
+    }
+
+    Err(format!("{} not found in wheel", lib_filename).into())
+}
+
+fn download_and_extract_windows_libs(
+    wheel_url: &str,
+    out_dir: &Path,
+    lib_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Download the wheel to a temp file
+    let wheel_path = out_dir.join("lightgbm.whl");
+    let mut dest = fs::File::create(&wheel_path)?;
+
+    let response = ureq::get(wheel_url).call()?;
+    let status = response.status();
+    if !(200..300).contains(&status) {
+        return Err(format!("Failed to download wheel: HTTP {}", status).into());
+    }
+
+    io::copy(&mut response.into_reader(), &mut dest)?;
+    drop(dest); // Close file before reading
+
+    // Extract both the DLL and the import library from the wheel
+    // Wheels are just zip files
+    let wheel_file = fs::File::open(&wheel_path)?;
+    let mut archive = zip::ZipArchive::new(wheel_file)?;
+
+    let mut dll_found = false;
+    let mut lib_found = false;
+
+    // Find and extract both lib_lightgbm.dll and lib_lightgbm.lib
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let filename = file.name();
+
+        if filename.ends_with("lib_lightgbm.dll") {
+            let lib_path = lib_dir.join("lib_lightgbm.dll");
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+            println!(
+                "cargo:warning=Extracted LightGBM DLL to: {}",
+                lib_path.display()
+            );
+            dll_found = true;
+        } else if filename.ends_with("lib_lightgbm.lib") {
+            let lib_path = lib_dir.join("lib_lightgbm.lib");
+            let mut outfile = fs::File::create(&lib_path)?;
+            io::copy(&mut file, &mut outfile)?;
+            println!(
+                "cargo:warning=Extracted LightGBM import library to: {}",
+                lib_path.display()
+            );
+            lib_found = true;
+        }
+
+        if dll_found && lib_found {
+            return Ok(());
+        }
+    }
+
+    if !dll_found {
+        return Err("lib_lightgbm.dll not found in wheel".into());
+    }
+    if !lib_found {
+        return Err("lib_lightgbm.lib not found in wheel".into());
+    }
 
     Ok(())
 }
@@ -203,7 +345,7 @@ fn main() {
         .header("wrapper.h")
         .clang_arg(format!("-I{}", lgbm_include_root.display()))
         .clang_arg("-xc++")
-        .clang_arg("-std=c++11")
+        .clang_arg("-std=c++17")
         // Only generate bindings for functions starting with LGBM_
         .allowlist_function("LGBM_.*")
         // Allowlist the main types we need
@@ -224,7 +366,6 @@ fn main() {
         .blocklist_type(".*_Tp.*")
         .blocklist_type(".*_Pred.*")
         .size_t_is_usize(true)
-        .rustfmt_bindings(true)
         .generate()
         .expect("Unable to generate bindings.");
 
@@ -253,8 +394,19 @@ fn main() {
         .join(env::var("PROFILE").unwrap());
 
     let lib_dest_path = target_dir.join(lib_filename);
-    fs::copy(&lib_source_path, &lib_dest_path)
-        .expect("Failed to copy library to target directory");
+    fs::copy(&lib_source_path, &lib_dest_path).expect("Failed to copy library to target directory");
+
+    // On Windows, also copy the import library (.lib) to the libs directory for linking
+    if os == "windows" {
+        let import_lib_source = out_dir.join("libs").join("lib_lightgbm.lib");
+        if import_lib_source.exists() {
+            // No need to copy the .lib to target dir, it's only used during linking
+            println!(
+                "cargo:warning=Found import library at: {}",
+                import_lib_source.display()
+            );
+        }
+    }
 
     // Set the library search path for the build-time linker
     let lib_search_path = out_dir.join("libs");
@@ -269,21 +421,38 @@ fn main() {
             // For macOS, add multiple rpath entries for IDE compatibility
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
             // Add the target directory to rpath as well
             if let Some(target_root) = out_dir.ancestors().find(|p| p.ends_with("target")) {
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/debug", target_root.display());
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/release", target_root.display());
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/debug",
+                    target_root.display()
+                );
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/release",
+                    target_root.display()
+                );
             }
-        },
+            println!("cargo:rustc-link-lib=dylib=_lightgbm");
+        }
         "linux" => {
             // For Linux, use $ORIGIN
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
-        },
-        _ => {} // No rpath needed for Windows
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
+            println!("cargo:rustc-link-lib=dylib=_lightgbm");
+        }
+        "windows" => {
+            // On Windows, we need to tell the linker where to find the DLL at runtime
+            // Copy the DLL to the output directory (already done above)
+            println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
+        }
+        _ => {}
     }
-
-    println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
 }

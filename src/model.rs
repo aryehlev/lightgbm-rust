@@ -49,14 +49,12 @@ pub struct Booster {
 impl Booster {
     /// Load a model from a file
     pub fn load<P: AsRef<Path>>(path: P) -> LightGBMResult<Self> {
-        let path_str = path.as_ref().to_str()
-            .ok_or_else(|| LightGBMError {
-                description: "Path contains invalid UTF-8 characters".to_string(),
-            })?;
-        let path_c_str = CString::new(path_str)
-            .map_err(|e| LightGBMError {
-                description: format!("Path contains NUL byte: {}", e),
-            })?;
+        let path_str = path.as_ref().to_str().ok_or_else(|| LightGBMError {
+            description: "Path contains invalid UTF-8 characters".to_string(),
+        })?;
+        let path_c_str = CString::new(path_str).map_err(|e| LightGBMError {
+            description: format!("Path contains NUL byte: {}", e),
+        })?;
         let mut handle: sys::BoosterHandle = ptr::null_mut();
         let mut num_iterations = 0i32;
 
@@ -85,10 +83,9 @@ impl Booster {
     /// let booster = Booster::load_from_string(&model_string).unwrap();
     /// ```
     pub fn load_from_string(model_str: &str) -> LightGBMResult<Self> {
-        let model_c_str = CString::new(model_str)
-            .map_err(|e| LightGBMError {
-                description: format!("Model string contains NUL byte: {}", e),
-            })?;
+        let model_c_str = CString::new(model_str).map_err(|e| LightGBMError {
+            description: format!("Model string contains NUL byte: {}", e),
+        })?;
         let mut handle: sys::BoosterHandle = ptr::null_mut();
         let mut num_iterations = 0i32;
 
@@ -118,10 +115,9 @@ impl Booster {
     /// ```
     pub fn load_from_buffer(buffer: &[u8]) -> LightGBMResult<Self> {
         // Convert bytes to string (LightGBM models are text-based)
-        let model_str = std::str::from_utf8(buffer)
-            .map_err(|e| LightGBMError {
-                description: format!("Invalid UTF-8 in model buffer: {}", e),
-            })?;
+        let model_str = std::str::from_utf8(buffer).map_err(|e| LightGBMError {
+            description: format!("Invalid UTF-8 in model buffer: {}", e),
+        })?;
         Self::load_from_string(model_str)
     }
 
@@ -173,7 +169,10 @@ impl Booster {
             return Err(LightGBMError {
                 description: format!(
                     "Input data size mismatch: expected {} elements ({}×{}), got {}",
-                    expected_len, num_rows, num_cols, data.len()
+                    expected_len,
+                    num_rows,
+                    num_cols,
+                    data.len()
                 ),
             });
         }
@@ -243,7 +242,10 @@ impl Booster {
             return Err(LightGBMError {
                 description: format!(
                     "Input data size mismatch: expected {} elements ({}×{}), got {}",
-                    expected_len, num_rows, num_cols, data.len()
+                    expected_len,
+                    num_rows,
+                    num_cols,
+                    data.len()
                 ),
             });
         }

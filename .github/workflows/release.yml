@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  release:
+    types: [published]
+
+jobs:
+  # Create release with version bump
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Bump version
+      id: version
+      run: |
+        # Get current version from Cargo.toml
+        CURRENT_VERSION=$(grep "^version" Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        echo "Current version: $CURRENT_VERSION"
+
+        # Split version into major.minor.patch
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+        # Bump version based on input
+        case "${{ github.event.inputs.release_type }}" in
+          major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+
+        NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+        echo "New version: $NEW_VERSION"
+
+        # Update Cargo.toml
+        sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+        # Output for later steps
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Commit version bump
+      run: |
+        git add Cargo.toml
+        git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+        git push origin ${{ github.ref_name }}
+
+    - name: Create tag
+      run: |
+        git tag ${{ steps.version.outputs.tag }}
+        git push origin ${{ steps.version.outputs.tag }}
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: Release ${{ steps.version.outputs.version }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Comprehensive pre-release testing across all platforms
+  pre-release-test:
+    name: Pre-release test ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: [create-release]
+    if: always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            arch: arm64
+            runner: macos-14
+          - os: macos
+            arch: x86_64
+            runner: macos-13
+          - os: linux
+            arch: x86_64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm64
+          - os: windows
+            arch: x86_64
+            runner: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies (Linux)
+      if: matrix.os == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libclang-dev
+
+    # Test with latest LightGBM version
+    - name: Build and test (latest LightGBM)
+      run: |
+        cargo build --release --verbose
+        cargo test --release --verbose
+
+    # Build all examples
+    - name: Build examples
+      run: |
+        cargo build --release --example basic_usage
+        cargo build --release --example advanced_usage
+
+    # Archive release artifacts
+    - name: Archive artifacts (Unix)
+      if: matrix.os != 'windows'
+      run: |
+        mkdir -p artifacts
+        cp target/release/lib_lightgbm.* artifacts/ || true
+        tar -czf lightgbm-rust-${{ matrix.os }}-${{ matrix.arch }}.tar.gz artifacts/
+
+    - name: Archive artifacts (Windows)
+      if: matrix.os == 'windows'
+      run: |
+        New-Item -ItemType Directory -Force -Path artifacts
+        Copy-Item target/release/lib_lightgbm.* artifacts/ -ErrorAction SilentlyContinue
+        Compress-Archive -Path artifacts/* -DestinationPath lightgbm-rust-${{ matrix.os }}-${{ matrix.arch }}.zip
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: lightgbm-rust-${{ matrix.os }}-${{ matrix.arch }}
+        path: |
+          lightgbm-rust-${{ matrix.os }}-${{ matrix.arch }}.*
+
+  # Upload artifacts to the release
+  upload-release-artifacts:
+    name: Upload Release Artifacts
+    needs: [create-release, pre-release-test]
+    runs-on: ubuntu-latest
+    if: always() && needs.pre-release-test.result == 'success' && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Upload artifacts to release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event_name == 'workflow_dispatch' && needs.create-release.outputs.tag || github.event.release.tag_name }}
+        files: artifacts/**/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to crates.io
+  publish:
+    name: Publish to crates.io
+    needs: [create-release, pre-release-test]
+    runs-on: ubuntu-latest
+    if: always() && needs.pre-release-test.result == 'success' && ((github.event_name == 'release' && !github.event.release.prerelease) || github.event_name == 'workflow_dispatch')
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event_name == 'workflow_dispatch' && needs.create-release.outputs.tag || github.ref }}
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Publish to crates.io
+      run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

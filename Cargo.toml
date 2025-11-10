@@ -9,9 +9,12 @@ categories = ["science"]
 readme = "README.md"
 rust-version = "1.70"
 
+[dependencies]
+
 [build-dependencies]
 bindgen = "0.72.0"
 ureq = "2.0"
+zip = "2.2"
 
 [features]
 default = []
