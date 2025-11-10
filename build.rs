@@ -371,5 +371,5 @@ fn main() {
         _ => {} // No rpath needed for Windows
     }
 
-    println!("cargo:rustc-link-lib=dylib=_lightgbm");
+    println!("cargo:rustc-link-lib=dylib=lib_lightgbm");
 }
