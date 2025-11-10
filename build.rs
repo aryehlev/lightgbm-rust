@@ -140,7 +140,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
     let lib_dir = out_dir.join("libs");
     fs::create_dir_all(&lib_dir)?;
 
-    // For macOS and Linux, extract from Python wheel to get architecture-specific binaries
+    // For macOS, extract from Python wheel to get architecture-specific binaries
     match (os.as_str(), arch.as_str()) {
         // macOS - both x86_64 and ARM64 available
         ("darwin", "aarch64") | ("darwin", "x86_64") => {
