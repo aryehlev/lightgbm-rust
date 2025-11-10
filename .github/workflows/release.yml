@@ -135,15 +135,12 @@ jobs:
       run: |
         cargo build --release --verbose
         cargo test --release --verbose
-        cargo build --release --features polars-support --verbose
-        cargo test --release --features polars-support --verbose
 
     # Build all examples
     - name: Build examples
       run: |
         cargo build --release --example basic_usage
         cargo build --release --example advanced_usage
-        cargo build --release --example polars_usage --features polars-support
 
     # Archive release artifacts
     - name: Archive artifacts (Unix)

@@ -10,7 +10,6 @@ readme = "README.md"
 rust-version = "1.70"
 
 [dependencies]
-polars = { version = "0.45", optional = true, default-features = false }
 
 [build-dependencies]
 bindgen = "0.72.0"
@@ -20,7 +19,6 @@ zip = "2.2"
 [features]
 default = []
 gpu = []
-polars-support = ["polars"]
 
 [[example]]
 name = "basic_usage"
@@ -29,8 +27,3 @@ path = "examples/basic_usage.rs"
 [[example]]
 name = "advanced_usage"
 path = "examples/advanced_usage.rs"
-
-[[example]]
-name = "polars_usage"
-path = "examples/polars_usage.rs"
-required-features = ["polars-support"]
