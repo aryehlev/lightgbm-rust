@@ -1,9 +1,9 @@
 extern crate bindgen;
 
 use std::env;
-use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 
 fn get_lightgbm_version() -> String {
     env::var("LIGHTGBM_VERSION").unwrap_or_else(|_| "4.6.0".to_string())
@@ -54,7 +54,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&c_api_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download c_api.h: HTTP {}", status).into());
     }
 
@@ -72,7 +72,7 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
     let response = ureq::get(&export_url).call()?;
     let status = response.status();
-    if status < 200 || status >= 300 {
+    if !(200..300).contains(&status) {
         return Err(format!("Failed to download export.h: HTTP {}", status).into());
     }
 
@@ -87,7 +87,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
         version
     );
 
-    println!("cargo:warning=Attempting to download arrow.h from: {}", arrow_url);
+    println!(
+        "cargo:warning=Attempting to download arrow.h from: {}",
+        arrow_url
+    );
 
     match ureq::get(&arrow_url).call() {
         Ok(response) if response.status() >= 200 && response.status() < 300 => {
@@ -102,7 +105,10 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
                 version
             );
 
-            println!("cargo:warning=Attempting to download arrow.tpp from: {}", arrow_tpp_url);
+            println!(
+                "cargo:warning=Attempting to download arrow.tpp from: {}",
+                arrow_tpp_url
+            );
 
             match ureq::get(&arrow_tpp_url).call() {
                 Ok(resp) if resp.status() >= 200 && resp.status() < 300 => {
@@ -117,7 +123,9 @@ fn download_lightgbm_headers(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             }
         }
         _ => {
-            println!("cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)");
+            println!(
+                "cargo:warning=arrow.h not available for this version (optional, only in v4.2.0+)"
+            );
         }
     }
 
@@ -155,7 +163,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             // Download the wheel
             let response = ureq::get(&download_url).call()?;
             let status = response.status();
-            if status < 200 || status >= 300 {
+            if !(200..300).contains(&status) {
                 return Err(format!("Failed to download wheel: HTTP {}", status).into());
             }
 
@@ -198,7 +206,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             if !found {
                 return Err("Could not find lib_lightgbm.dylib in wheel".into());
             }
-        },
+        }
         "linux" => {
             // Determine the wheel filename based on architecture
             let wheel_name = match arch.as_str() {
@@ -219,7 +227,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
             let response = ureq::get(&download_url).call()?;
             let status = response.status();
-            if status < 200 || status >= 300 {
+            if !(200..300).contains(&status) {
                 return Err(format!("Failed to download wheel: HTTP {}", status).into());
             }
 
@@ -260,7 +268,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             if !found {
                 return Err("Could not find lib_lightgbm.so in wheel".into());
             }
-        },
+        }
         "windows" => {
             let wheel_name = format!("lightgbm-{}-py3-none-win_amd64.whl", version);
             let download_url = format!(
@@ -275,7 +283,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
 
             let response = ureq::get(&download_url).call()?;
             let status = response.status();
-            if status < 200 || status >= 300 {
+            if !(200..300).contains(&status) {
                 return Err(format!("Failed to download wheel: HTTP {}", status).into());
             }
 
@@ -310,7 +318,7 @@ fn download_compiled_library(out_dir: &Path) -> Result<(), Box<dyn std::error::E
             if !found {
                 return Err("Could not find lib_lightgbm.dll in wheel".into());
             }
-        },
+        }
         _ => return Err(format!("Unsupported platform: {}", os).into()),
     }
 
@@ -358,7 +366,6 @@ fn main() {
         .blocklist_type(".*_Tp.*")
         .blocklist_type(".*_Pred.*")
         .size_t_is_usize(true)
-        .rustfmt_bindings(true)
         .generate()
         .expect("Unable to generate bindings.");
 
@@ -387,8 +394,7 @@ fn main() {
         .join(env::var("PROFILE").unwrap());
 
     let lib_dest_path = target_dir.join(lib_filename);
-    fs::copy(&lib_source_path, &lib_dest_path)
-        .expect("Failed to copy library to target directory");
+    fs::copy(&lib_source_path, &lib_dest_path).expect("Failed to copy library to target directory");
 
     // Set the library search path for the build-time linker
     let lib_search_path = out_dir.join("libs");
@@ -403,19 +409,31 @@ fn main() {
             // For macOS, add multiple rpath entries for IDE compatibility
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
             // Add the target directory to rpath as well
             if let Some(target_root) = out_dir.ancestors().find(|p| p.ends_with("target")) {
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/debug", target_root.display());
-                println!("cargo:rustc-link-arg=-Wl,-rpath,{}/release", target_root.display());
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/debug",
+                    target_root.display()
+                );
+                println!(
+                    "cargo:rustc-link-arg=-Wl,-rpath,{}/release",
+                    target_root.display()
+                );
             }
-        },
+        }
         "linux" => {
             // For Linux, use $ORIGIN
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../..");
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_search_path.display());
-        },
+            println!(
+                "cargo:rustc-link-arg=-Wl,-rpath,{}",
+                lib_search_path.display()
+            );
+        }
         _ => {} // No rpath needed for Windows
     }
 

@@ -1,4 +1,4 @@
-use lightgbm_rust::{Booster, predict_type};
+use lightgbm_rust::{predict_type, Booster};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load a trained LightGBM model
@@ -16,10 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Classes: {}", num_classes);
 
     // Example data with f32 (more memory efficient for large datasets)
-    let data_f32: Vec<f32> = vec![
-        1.0, 2.0, 3.0, 4.0, 5.0,
-        2.0, 3.0, 4.0, 5.0, 6.0,
-    ];
+    let data_f32: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 3.0, 4.0, 5.0, 6.0];
     let num_rows = 2;
     let num_cols = 5;
 
@@ -32,11 +29,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Raw scores: {:?}", raw_scores);
 
     println!("\n--- Leaf Index Prediction ---");
-    let leaf_indices = booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
+    let leaf_indices =
+        booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::LEAF_INDEX)?;
     println!("Leaf indices: {:?}", leaf_indices);
 
     println!("\n--- Feature Contribution (SHAP) ---");
-    let contributions = booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
+    let contributions =
+        booster.predict_f32(&data_f32, num_rows, num_cols, predict_type::CONTRIB)?;
     println!("Feature contributions: {:?}", contributions);
 
     Ok(())

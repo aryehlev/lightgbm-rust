@@ -29,11 +29,7 @@ pub trait BoosterPolarsExt {
     ///
     /// let predictions = booster.predict_dataframe(&df, predict_type::NORMAL).unwrap();
     /// ```
-    fn predict_dataframe(
-        &self,
-        df: &DataFrame,
-        predict_type: i32,
-    ) -> LightGBMResult<Vec<f64>>;
+    fn predict_dataframe(&self, df: &DataFrame, predict_type: i32) -> LightGBMResult<Vec<f64>>;
 
     /// Predict using specific columns from a Polars DataFrame
     ///
@@ -50,11 +46,7 @@ pub trait BoosterPolarsExt {
 }
 
 impl BoosterPolarsExt for Booster {
-    fn predict_dataframe(
-        &self,
-        df: &DataFrame,
-        predict_type: i32,
-    ) -> LightGBMResult<Vec<f64>> {
+    fn predict_dataframe(&self, df: &DataFrame, predict_type: i32) -> LightGBMResult<Vec<f64>> {
         let (data, num_rows, num_cols) = dataframe_to_dense(df)?;
         self.predict_f32(&data, num_rows, num_cols, predict_type)
     }
@@ -194,19 +186,18 @@ fn extract_f32_value(series: &Series, idx: usize) -> LightGBMResult<f32> {
             let ca = series.bool().map_err(|e| LightGBMError {
                 description: format!("Failed to cast to bool: {}", e),
             })?;
-            Ok(if ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? {
-                1.0
-            } else {
-                0.0
-            })
+            Ok(
+                if ca.get(idx).ok_or_else(|| LightGBMError {
+                    description: format!("Null value at index {}", idx),
+                })? {
+                    1.0
+                } else {
+                    0.0
+                },
+            )
         }
         dt => Err(LightGBMError {
-            description: format!(
-                "Unsupported data type for conversion to f32: {}",
-                dt
-            ),
+            description: format!("Unsupported data type for conversion to f32: {}", dt),
         }),
     }
 }
