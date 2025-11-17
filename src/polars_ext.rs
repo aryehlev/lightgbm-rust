@@ -11,7 +11,7 @@ pub trait BoosterPolarsExt {
     ///
     /// # Arguments
     /// * `df` - Input DataFrame with numeric features
-    /// * `predict_type` - Prediction type (see `predict_type` module constants)
+    /// * `predict_type` - Type of prediction (see `predict_type` module)
     ///
     /// # Returns
     /// A vector of prediction values
@@ -36,7 +36,7 @@ pub trait BoosterPolarsExt {
     /// # Arguments
     /// * `df` - Input DataFrame
     /// * `columns` - Column names to use as features (in order)
-    /// * `predict_type` - Prediction type
+    /// * `predict_type` - Type of prediction
     fn predict_dataframe_with_columns(
         &self,
         df: &DataFrame,
@@ -48,7 +48,7 @@ pub trait BoosterPolarsExt {
 impl BoosterPolarsExt for Booster {
     fn predict_dataframe(&self, df: &DataFrame, predict_type: i32) -> LightGBMResult<Vec<f64>> {
         let (data, num_rows, num_cols) = dataframe_to_dense(df)?;
-        self.predict_f32(&data, num_rows, num_cols, predict_type)
+        self.predict(&data, num_rows, num_cols, predict_type)
     }
 
     fn predict_dataframe_with_columns(
@@ -63,14 +63,14 @@ impl BoosterPolarsExt for Booster {
         })?;
 
         let (data, num_rows, num_cols) = dataframe_to_dense(&selected)?;
-        self.predict_f32(&data, num_rows, num_cols, predict_type)
+        self.predict(&data, num_rows, num_cols, predict_type)
     }
 }
 
-/// Convert a Polars DataFrame to dense f32 data in row-major format
+/// Convert a Polars DataFrame to dense f64 data in row-major format
 ///
-/// This is optimized for efficient memory layout matching LightGBM's expectations.
-fn dataframe_to_dense(df: &DataFrame) -> LightGBMResult<(Vec<f32>, i32, i32)> {
+/// Optimized column-by-column conversion using Polars' cast for simplicity and speed.
+fn dataframe_to_dense(df: &DataFrame) -> LightGBMResult<(Vec<f64>, i32, i32)> {
     let num_rows = df.height();
     let num_cols = df.width();
 
@@ -80,124 +80,31 @@ fn dataframe_to_dense(df: &DataFrame) -> LightGBMResult<(Vec<f32>, i32, i32)> {
         });
     }
 
-    // Pre-allocate output buffer
-    let mut data = Vec::with_capacity(num_rows * num_cols);
+    // Pre-allocate with exact size
+    let total_elements = num_rows * num_cols;
+    let mut data = vec![0.0f64; total_elements];
 
-    // Convert row by row for better cache locality
-    for row_idx in 0..num_rows {
-        for col in df.get_columns() {
-            let series = col.as_materialized_series();
-            let value = extract_f32_value(series, row_idx)?;
-            data.push(value);
+    // Process column by column - cast to Float64 for simplicity and speed
+    for (col_idx, column) in df.get_columns().iter().enumerate() {
+        let series = column.as_materialized_series();
+
+        // Cast to Float64 - Polars handles all type conversions efficiently
+        let f64_series = series.cast(&DataType::Float64).map_err(|e| LightGBMError {
+            description: format!("Failed to cast column to f64: {}", e),
+        })?;
+
+        let ca = f64_series.f64().map_err(|e| LightGBMError {
+            description: format!("Failed to get f64 array: {}", e),
+        })?;
+
+        for (row_idx, opt_val) in ca.iter().enumerate() {
+            let val = opt_val.ok_or_else(|| LightGBMError {
+                description: format!("Null value at row {}, col {}", row_idx, col_idx),
+            })?;
+            data[row_idx * num_cols + col_idx] = val;
         }
     }
 
     Ok((data, num_rows as i32, num_cols as i32))
 }
 
-/// Extract an f32 value from a Series at the given index
-///
-/// Supports conversion from all numeric types and booleans.
-fn extract_f32_value(series: &Series, idx: usize) -> LightGBMResult<f32> {
-    use DataType::*;
-
-    match series.dtype() {
-        Float32 => {
-            let ca = series.f32().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to f32: {}", e),
-            })?;
-            ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })
-        }
-        Float64 => {
-            let ca = series.f64().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to f64: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        Int8 => {
-            let ca = series.i8().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to i8: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        Int16 => {
-            let ca = series.i16().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to i16: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        Int32 => {
-            let ca = series.i32().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to i32: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        Int64 => {
-            let ca = series.i64().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to i64: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        UInt8 => {
-            let ca = series.u8().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to u8: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        UInt16 => {
-            let ca = series.u16().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to u16: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        UInt32 => {
-            let ca = series.u32().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to u32: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        UInt64 => {
-            let ca = series.u64().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to u64: {}", e),
-            })?;
-            Ok(ca.get(idx).ok_or_else(|| LightGBMError {
-                description: format!("Null value at index {}", idx),
-            })? as f32)
-        }
-        Boolean => {
-            let ca = series.bool().map_err(|e| LightGBMError {
-                description: format!("Failed to cast to bool: {}", e),
-            })?;
-            Ok(
-                if ca.get(idx).ok_or_else(|| LightGBMError {
-                    description: format!("Null value at index {}", idx),
-                })? {
-                    1.0
-                } else {
-                    0.0
-                },
-            )
-        }
-        dt => Err(LightGBMError {
-            description: format!("Unsupported data type for conversion to f32: {}", dt),
-        }),
-    }
-}

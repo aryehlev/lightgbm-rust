@@ -8,7 +8,7 @@ mod model;
 pub use crate::model::Booster;
 
 #[cfg(feature = "polars")]
-mod polars_ext;
+pub mod polars_ext;
 #[cfg(feature = "polars")]
 pub use crate::polars_ext::BoosterPolarsExt;
 
